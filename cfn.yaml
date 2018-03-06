@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Lambda which protects EC2 instances from termination if they're essential to an Elasticsearch cluster
+Parameters:
+  App:
+    Description: Application name
+    Type: String
+    Default: es-node-aws-protector
+Resources:
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+        - PolicyName: lambda
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: "*"
+  Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: ophan-dist
+        S3Key: ophan/PROD/es-node-protector/es-node-protector.jar
+      Description: Elasticsearch node protector for Ophan
+      Handler: protector.Lambda::handler
+      MemorySize: 256
+      Role: !GetAtt ExecutionRole.Arn
+      Runtime: java8
+      Timeout: 30
+

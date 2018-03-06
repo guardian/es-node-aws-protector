@@ -1,0 +1,14 @@
+stacks:
+- ophan
+deployments:
+  es-node-aws-protector:
+    parameters:
+      bucket: ophan-dist
+      fileName: es-node-aws-protector.jar
+      functions:
+        PROD:
+          filename: es-node-aws-protector.jar
+          name: Ophan-es-node-aws-protector-Lambda-xxxxx
+    type: aws-lambda
+regions:
+- eu-west-1

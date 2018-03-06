@@ -6,7 +6,8 @@ import com.amazonaws.regions.Regions.EU_WEST_1
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder
 import com.amazonaws.services.autoscaling.model.SetInstanceProtectionRequest
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder
-import com.amazonaws.services.ec2.model.{DescribeInstancesRequest, Filter, Instance, ModifyInstanceAttributeRequest}
+import com.amazonaws.services.ec2.model.InstanceStateName.Running
+import com.amazonaws.services.ec2.model._
 
 import scala.collection.convert.ImplicitConversions._
 
@@ -68,9 +69,11 @@ object AWS {
 
   def instancesWithAppTag(appTag: String): Set[Instance] = {
     println(s"Going to get EC2 instances")
-    ec2Client.describeInstances(
+    val allInstances = ec2Client.describeInstances(
       new DescribeInstancesRequest().withFilters(
         new Filter("tag:Stage", List("PROD")),
         new Filter("tag:App", List(appTag)))).getReservations.flatMap(_.getInstances).toSet
+    println(allInstances.groupBy(_.getState.getName).mapValues(_.map(_.getInstanceId)))
+    allInstances.filter(i => InstanceStateName.fromValue(i.getState.getName) == Running)
   }
 }

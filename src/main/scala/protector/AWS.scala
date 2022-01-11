@@ -1,79 +1,32 @@
 package protector
 
-import com.amazonaws.auth._
-import com.amazonaws.auth.profile.ProfileCredentialsProvider
-import com.amazonaws.regions.Regions.EU_WEST_1
-import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder
-import com.amazonaws.services.autoscaling.model.SetInstanceProtectionRequest
-import com.amazonaws.services.ec2.AmazonEC2ClientBuilder
-import com.amazonaws.services.ec2.model.InstanceStateName.Running
-import com.amazonaws.services.ec2.model._
-
-import scala.collection.convert.ImplicitConversions._
+import software.amazon.awssdk.auth.credentials._
+import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
+import software.amazon.awssdk.core.client.builder.SdkSyncClientBuilder
+import software.amazon.awssdk.http.SdkHttpClient
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.regions.Region.EU_WEST_1
+import software.amazon.awssdk.services.autoscaling.{AutoScalingClient, AutoScalingClientBuilder}
+import software.amazon.awssdk.services.cloudwatch.{CloudWatchClient, CloudWatchClientBuilder}
+import software.amazon.awssdk.services.ec2.{Ec2AsyncClient, Ec2AsyncClientBuilder, Ec2Client, Ec2ClientBuilder}
 
 object AWS {
+  val region: Region = EU_WEST_1
 
-  val credentialsProviderChain = new AWSCredentialsProviderChain(
-    new ProfileCredentialsProvider("ophan"),
-    new EnvironmentVariableCredentialsProvider() // Apparently needed for Lambdas, see: https://stackoverflow.com/a/31578329/438886
-  )
+  def credentialsForDevAndProd(devProfile: String, prodCreds: AwsCredentialsProvider): AwsCredentialsProviderChain =
+    AwsCredentialsProviderChain.of(prodCreds, ProfileCredentialsProvider.builder().profileName(devProfile).build())
 
-  val region = EU_WEST_1
+  lazy val credentials: AwsCredentialsProvider =
+    credentialsForDevAndProd("ophan", EnvironmentVariableCredentialsProvider.create())
 
-  implicit class RichInstance(instance: Instance) {
-    val tags: Map[String, String] = instance.getTags.toSeq.map(tag => tag.getKey -> tag.getValue).toMap
-    val asgName: Option[String] = tags.get("aws:autoscaling:groupName")
-    val name: Option[String] = tags.get("Name")
-  }
+  private val sdkHttpClient: SdkHttpClient = UrlConnectionHttpClient.builder().build()
 
-  val asgClient = AmazonAutoScalingClientBuilder.standard()
-    .withCredentials(credentialsProviderChain).withRegion(region).build()
+  def buildSync[T, B <: AwsClientBuilder[B, T] with SdkSyncClientBuilder[B, T]](builder: B): T =
+    builder.httpClient(sdkHttpClient).credentialsProvider(credentials).region(region).build()
 
+  lazy val EC2Sync = buildSync[Ec2Client, Ec2ClientBuilder](Ec2Client.builder())
+  lazy val ASGSync = buildSync[AutoScalingClient, AutoScalingClientBuilder](AutoScalingClient.builder())
+  lazy val CloudWatchSync = buildSync[CloudWatchClient, CloudWatchClientBuilder](CloudWatchClient.builder())
 
-  val ec2Client = AmazonEC2ClientBuilder.standard()
-    .withCredentials(credentialsProviderChain).withRegion(region).build()
-
-  def disableApiTermination(protect: Boolean)(instance: Instance) {
-    ec2Client.modifyInstanceAttribute(
-      new ModifyInstanceAttributeRequest()
-        .withInstanceId(instance.getInstanceId).withDisableApiTermination(protect))
-  }
-
-  def setProtection(protect: Boolean, instances: Set[Instance]) {
-    println(s"Setting protect=$protect for ${instances.size} instances")
-    instances.foreach(disableApiTermination(protect))
-    for ((asgName, asgInstances) <- instancesGroupedByASG(instances)) {
-      protectInstancesInASG(protect, asgName, asgInstances)
-    }
-  }
-
-  private def protectInstancesInASG(protect: Boolean, asgName: String, asgInstances: Set[Instance]) = {
-    val result = asgClient.setInstanceProtection(new SetInstanceProtectionRequest()
-      .withAutoScalingGroupName(asgName)
-      .withInstanceIds(asgInstances.map(_.getInstanceId))
-      .withProtectedFromScaleIn(protect))
-  }
-
-  private def pretty(instances: Traversable[Instance]): String =
-    s"[${instances.toSeq.sortBy(_.name).map(i => s"  ${i.getInstanceId} (name='${i.name.mkString}')").mkString("\n")}]"
-
-  def instancesGroupedByASG(instances: Set[Instance]): Map[String, Set[Instance]] = {
-
-    val instancesByASGName = instances.groupBy(_.asgName) collect {
-      case (Some(asgName), asgInstances) => asgName -> asgInstances
-    }
-
-    println(instancesByASGName.mapValues(pretty).mkString("\n"))
-    instancesByASGName
-  }
-
-  def instancesWithAppTag(appTag: String): Set[Instance] = {
-    println(s"Going to get EC2 instances")
-    val allInstances = ec2Client.describeInstances(
-      new DescribeInstancesRequest().withFilters(
-        new Filter("tag:Stage", List("PROD")),
-        new Filter("tag:App", List(appTag)))).getReservations.flatMap(_.getInstances).toSet
-    println(allInstances.groupBy(_.getState.getName).mapValues(_.map(_.getInstanceId)))
-    allInstances.filter(i => InstanceStateName.fromValue(i.getState.getName) == Running)
-  }
 }

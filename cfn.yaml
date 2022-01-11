@@ -18,7 +18,7 @@ Resources:
             Action: sts:AssumeRole
       Path: /
       Policies:
-        - PolicyName: logs
+        - PolicyName: logging
           PolicyDocument:
             Statement:
               Effect: Allow
@@ -27,23 +27,48 @@ Resources:
                 - logs:CreateLogStream
                 - logs:PutLogEvents
               Resource: arn:aws:logs:*:*:*
-        - PolicyName: lambda
+        - PolicyName: es-node-aws-protector-actions
           PolicyDocument:
             Statement:
-              Effect: Allow
-              Action:
-                - lambda:InvokeFunction
-              Resource: "*"
+              # Protect ElasticSearch instances
+              - Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeTags
+                  - ec2:ModifyInstanceAttribute
+                  - autoscaling:DescribeAutoScalingGroups
+                  - autoscaling:DescribeAutoScalingInstances
+                  - autoscaling:SetInstanceProtection
+                Effect: Allow
+                Resource: '*'
+
   Lambda:
     Type: AWS::Lambda::Function
     Properties:
       Code:
         S3Bucket: ophan-dist
-        S3Key: ophan/PROD/es-node-protector/es-node-protector.jar
+        S3Key: ophan/PROD/es-node-aws-protector/es-node-aws-protector.jar
       Description: Elasticsearch node protector for Ophan
       Handler: protector.Lambda::handler
-      MemorySize: 256
+      MemorySize: 1024
       Role: !GetAtt ExecutionRole.Arn
-      Runtime: java8
-      Timeout: 30
+      Runtime: java11
+      Architectures:
+        - arm64
+      Timeout: 120
 
+  ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(1 minutes)
+      Targets:
+        - Arn: !GetAtt [Lambda, Arn]
+          Id: EsNodeAwsProtectorLambda
+
+  # Permission to allow the event rule to trigger the lambda
+  InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Lambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt [ScheduledRule, Arn]

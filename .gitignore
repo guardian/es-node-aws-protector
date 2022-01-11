@@ -2,3 +2,5 @@ target/
 */target/
 .idea/
 *.log
+.bsp/
+.DS_Store

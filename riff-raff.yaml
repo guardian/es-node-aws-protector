@@ -1,14 +1,17 @@
 stacks:
-- ophan
+  - ophan
 deployments:
   es-node-aws-protector:
+    type: aws-lambda
     parameters:
       bucket: ophan-dist
       fileName: es-node-aws-protector.jar
-      functions:
-        PROD:
-          filename: es-node-aws-protector.jar
-          name: Ophan-es-node-aws-protector-Lambda-xxxxx
-    type: aws-lambda
+      lookupByTags: true
+  cloudformation:
+    type: cloud-formation
+    app: es-node-aws-protector
+    dependencies: [ es-node-aws-protector ]
+    parameters:
+      templatePath: cfn.yaml
 regions:
-- eu-west-1
+  - eu-west-1

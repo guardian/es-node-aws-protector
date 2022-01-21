@@ -2,11 +2,11 @@ package protector.discovery
 
 import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties}
 import com.sksamuel.elastic4s.http.{JavaClient, JavaClientSniffed, SniffingConfiguration}
-import org.elasticsearch.client.sniff.{SniffOnFailureListener, Sniffer}
-import org.elasticsearch.client.{RestClient, RestHighLevelClient}
-import org.elasticsearch.common.settings.Settings
-import protector.HostAddresses
+import protector.{AWS, HostAddresses}
+import protector.logging.Logging
 import software.amazon.awssdk.services.ec2.model.{DescribeInstancesRequest, DescribeInstancesResponse, Filter, Instance}
+
+import scala.jdk.CollectionConverters._
 
 
 
@@ -38,7 +38,7 @@ object ElasticClusterScanner {
      */
     case class MultipleVarying(stageTag: String) extends ElasticsearchClientFactory with Logging {
 
-      log.info(s"stageTag=$stageTag")
+      logger.info(s"stageTag=$stageTag")
       val stageAndAppFilters = Map("Stage" -> stageTag, "App" -> "elasticsearch-7")
 
       def discoverEC2Instances(): Iterable[Instance] = {
@@ -54,7 +54,7 @@ object ElasticClusterScanner {
 
       override def lookupHostAddresses(): HostAddresses = HostAddresses(
         discoverEC2Instances().map(_.publicDnsName).filter(_.nonEmpty).toList,
-        restApiPort = 9200, transportPort = 9300 // we use the default ports on our EC2 elasticsearch nodes.
+        restApiPort = 9200
       )
 
       override def createElastic4sClientFor(addressesSnapshot: HostAddresses): ElasticClient = {

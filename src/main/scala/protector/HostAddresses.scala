@@ -10,6 +10,7 @@ object HostAddresses {
   }
 }
 
+
 case class HostAddresses(hostDnsNames: Seq[String], restApiPort: Int) {
   lazy val elasticNodeEndpoints: Seq[ElasticNodeEndpoint] =
     hostDnsNames.map(host => ElasticNodeEndpoint("http", host, restApiPort, None))

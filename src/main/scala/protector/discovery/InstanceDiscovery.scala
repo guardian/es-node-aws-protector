@@ -12,13 +12,13 @@ class InstanceDiscovery(
   tagFilters: Map[String, String]
 ) {
 
-  def discoverEC2Instances(): Iterable[Instance] = {
+  def discoverEC2Instances(): Set[Instance] = {
     val describeInstancesResponse =
       ec2Client.describeInstances(requestFor(
         Map("vpc-id" -> vpcId) ++ prefixKeys("tag", tagFilters)
       ))
 
-    describeInstancesResponse.reservations.asScala.flatMap(_.instances.asScala).filter(_.state.name == RUNNING)
+    describeInstancesResponse.reservations.asScala.toSet.flatMap(_.instances.asScala).filter(_.state.name == RUNNING)
   }
 
   private def requestFor(filterKeyAndValues: Map[String, String]) = DescribeInstancesRequest.builder().filters(

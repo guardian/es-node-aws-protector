@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Lambda which protects EC2 instances from termination if they're essential to an Elasticsearch cluster
+Description: Fetching the latest GeoIP database and putting it in S3 for Ophan
 Parameters:
   App:
     Description: Application name

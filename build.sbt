@@ -6,7 +6,7 @@ description:= "Fetching the latest GeoIP database and putting it in S3 for Ophan
 
 version := "1.0"
 
-scalaVersion := "2.13.6"
+scalaVersion := "2.13.8"
 
 scalacOptions ++= Seq(
   "-deprecation",
@@ -25,9 +25,10 @@ libraryDependencies ++= Seq(
   "net.logstash.logback" % "logstash-logback-encoder" % "7.0.1",
   "org.slf4j" % "log4j-over-slf4j" % "1.7.32", //  log4j-over-slf4j provides `org.apache.log4j.MDC`, which is dynamically loaded by the Lambda runtime
   "ch.qos.logback" % "logback-classic" % "1.2.10",
-  "com.lihaoyi" %% "upickle" % "1.4.3",
+  "com.lihaoyi" %% "upickle" % "1.5.0",
+  "com.google.guava" % "guava" % "31.1-jre",
 
-  "org.elasticsearch" % "elasticsearch" % "2.4.6",
+  // "org.elasticsearch" % "elasticsearch" % "2.4.6",
   "com.madgag" %% "scala-collection-plus" % "0.11",
   "com.jakewharton.fliptables" % "fliptables" % "1.1.0",
   "org.scalatest" %% "scalatest" % "3.2.10" % Test

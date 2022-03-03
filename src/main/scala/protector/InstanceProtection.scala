@@ -5,18 +5,13 @@ import com.madgag.scala.collection.decorators._
 import protector.EC2Instances._
 import protector.analysis.Cluster.Node
 import protector.analysis.{Cluster, NodeCriterion, RequiredNodesSummary}
+import protector.discovery.ClusterDiscovery
 import software.amazon.awssdk.services.ec2.model._
 
 
-case class InstanceProtection(requiredNodesSummary: RequiredNodesSummary, instances: Seq[Instance]) {
+case class InstanceProtection(requiredNodesSummary: RequiredNodesSummary, clusterDiscovery: ClusterDiscovery) {
 
-  val instancesByName: Map[String, Instance] = (instances.map(i => i.name -> i) collect {
-    case (Some(name), instance) => name -> instance
-  }).toMap
-
-  val instancesWithoutName: Seq[Instance] = instances.filter(_.name.isEmpty)
-
-  def instanceForNode(node: Cluster.Node): Option[Instance] = instancesByName.get(node.name)
+  def instanceForNode(node: Cluster.Node): Option[Instance] = clusterDiscovery.instancesByNode.get(node)
 
   val instancesByProtection: Map[Boolean, Seq[Instance]] =
     requiredNodesSummary.nodesByNeed.mapV(_.toSeq.flatMap(instanceForNode))
@@ -37,7 +32,7 @@ case class InstanceProtection(requiredNodesSummary: RequiredNodesSummary, instan
     val nodeRows = cluster.nodes.toSeq.sorted(summaryTableOrdering).map {
       node => {
         val criteriaProtectingNode = requiredNodesSummary.activatedCriteriaByNode(node)
-        val instanceOpt = instancesByName.get(node.name)
+        val instanceOpt = instanceForNode(node)
         Seq(
           instanceOpt.map(_.instanceId).getOrElse("UNKNOWN\nCAN NOT\nPROTECT").mkString,
           Seq(node.name,node.ip.getHostAddress).mkString("\n"),

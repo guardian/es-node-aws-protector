@@ -19,10 +19,21 @@ class ESNodeProtectorService(
 
   def runOnce(): Future[Unit] = {
     for {
-      instancesByCluster <- elasticsearchClustersDiscovery.execute()
-      _ <- Future.traverse(instancesByCluster.values) {
-        instances =>
+      instancesAndClusterCensus <- elasticsearchClustersDiscovery.execute()
+      _  <- Future.traverse(instancesAndClusterCensus.clusterDiscoveryByClusterUuid.values) {
+      clusterDiscovery =>
+        val clusterSummary = clusterDiscovery.cluster
+        // as we have this data, now is a convenient time to report uptime
+        nodeUptimeReporter.reportUptime(clusterSummary)
 
+        val instanceProtection = InstanceProtection(
+          RequiredNodesSummary.forCluster(clusterSummary),
+          clusterDiscovery
+        )
+
+        logger.info(instanceProtection.summaryTable)
+
+        instanceProtectionUpdater.execute(instanceProtection)
       }
     } yield ()
 

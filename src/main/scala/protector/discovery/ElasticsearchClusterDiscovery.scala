@@ -52,48 +52,43 @@ class ElasticsearchClustersDiscovery(
           matchUp(clientDetails.client, clientDetails.matchingInstancesAreKnown.getOrElse(allInstances)).map(clusterUuid -> _)
       }
     } yield InstanceAndClusterCensus(clusterDiscoveryByClusterUuid.toMap, allInstances)
-
-    for {
-      results <- Future.traverse(allInstances) { instance =>
-        val address = Option(instance.publicDnsName).filter(_.nonEmpty)
-        val client = ElasticClient(JavaClient(ElasticProperties(HostAddresses(address.toList, restApiPort = 9200).elasticNodeEndpoints)))
-        for {
-          response <- client.execute(ClusterStatsRequest())
-        } yield response.result.clusterUUID -> instance
-      }
-    } yield results.groupMap(_._1)(_._2)
   }
 }
 
 object Boo {
 
   trait FunkStar {
-    def getClientDetailsByUuidGiven(allInstances: Set[Instance])(implicit ec: ExecutionContext): Future[Map[String, ClientDetails]]
+    implicit val ec: ExecutionContext
+
+    def getClientDetailsByUuidGiven(allInstances: Set[Instance]): Future[Map[String, ClientDetails]]
 
     def elasticClientFor(hostAddresses: HostAddresses): ElasticClient =
       ElasticClient(JavaClient(ElasticProperties(hostAddresses.elasticNodeEndpoints)))
+
+    def clusterUuidFor(elasticClient: ElasticClient): Future[String] = for {
+      response <- elasticClient.execute(ClusterStatsRequest())
+    } yield response.result.clusterUUID
   }
 
-  case class FixedProxy(hostAddress: HostAddresses) extends FunkStar {
-    override def getClientDetailsByUuidGiven(allInstances: Set[Instance])(implicit ec: ExecutionContext): Future[Map[String, ClientDetails]] = ???
+  case class FixedProxy(hostAddress: HostAddresses)(implicit val ec: ExecutionContext) extends FunkStar {
+    override def getClientDetailsByUuidGiven(allInstances: Set[Instance]): Future[Map[String, ClientDetails]] = {
+      val client = elasticClientFor(hostAddress)
+      for {
+        clusterUuid <- clusterUuidFor(client)
+      } yield Map(clusterUuid -> ClientDetails(client, matchingInstancesAreKnown = None))
+    }
   }
 
-  case class MultipleDirectAccess(restApiPort: Int = 9200) extends FunkStar {
+  case class MultipleDirectAccess(restApiPort: Int = 9200)(implicit val ec: ExecutionContext) extends FunkStar {
     def elasticClientFor(instances: Set[Instance]): ElasticClient =
       elasticClientFor(HostAddresses(instances.map(_.publicDnsName).toSeq, restApiPort))
 
-    override def getClientDetailsByUuidGiven(allInstances: Set[Instance])(implicit ec: ExecutionContext): Future[Map[String, ClientDetails]] = for {
-      results <- Future.traverse(allInstances) { instance =>
-        val address = Option(instance.publicDnsName).filter(_.nonEmpty)
-        val singleInstanceClient = elasticClientFor(HostAddresses(address.toList, restApiPort))
-        for {
-          response <- singleInstanceClient.execute(ClusterStatsRequest())
-        } yield response.result.clusterUUID -> instance
-      }
-    } yield results.groupUp(_._1) { foo =>
-      val matchingInstances: Set[Instance] = foo.map(_._2)
-      val client = elasticClientFor(HostAddresses(matchingInstances.map(_.publicDnsName).toSeq, restApiPort))
-      ClientDetails(client, Some(matchingInstances))
+    override def getClientDetailsByUuidGiven(allInstances: Set[Instance]): Future[Map[String, ClientDetails]] = for {
+      clusterUuidsAndInstances <- Future.traverse(allInstances)(instance => clusterUuidFor(instance).map(_ -> instance))
+    } yield clusterUuidsAndInstances.groupMap(_._1)(_._2).mapV { clusterInstances =>
+      ClientDetails(elasticClientFor(clusterInstances), matchingInstancesAreKnown=Some(clusterInstances))
     }
+
+    def clusterUuidFor(instance: Instance): Future[String] = clusterUuidFor(elasticClientFor(Set(instance)))
   }
 }
